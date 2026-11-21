@@ -356,4 +356,24 @@ function attempt(id){run(()=>showAttempt(id));}
 function downloadCSV(){let cell=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';let rows=[['Оқушы','Тақырып','Балл','Ең жоғары балл','Пайыз','Әрекет','Уақыт'],...data.attempts.map(a=>[a.name,lessonLabel(a),a.score,a.max,a.percent,a.number,a.at])];let url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(cell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}));let a=document.createElement('a');a.href=url;a.download='UBT-natizheler.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function signOut(){const oldToken=token;clearSessionToken();token='';data=null;showLogin();run(()=>api('logout',oldToken));}
 if(token)run(async()=>{try{await refresh();}catch(e){showLogin();throw e;}});else showLogin();
-</script></body></html>
+</script><script>
+// Disable the page context menu; this does not conceal browser-delivered source.
+document.addEventListener('contextmenu', function(event) {
+  event.preventDefault();
+}, true);
+// Best-effort shortcut restrictions. Browser menus and external requests remain outside page control.
+document.addEventListener('keydown', function(event) {
+  const key = String(event.key || '').toLowerCase();
+  const modifier = event.ctrlKey || event.metaKey;
+  const blocked = key === 'f12' || key === 'contextmenu' ||
+    (event.shiftKey && key === 'f10') ||
+    (modifier && (key === 'u' || key === 's')) ||
+    (modifier && event.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) ||
+    (event.metaKey && event.altKey && ['i', 'j', 'c', 'u'].includes(key));
+  if (blocked) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
+</script>
+</body></html>

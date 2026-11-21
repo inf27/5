@@ -234,9 +234,28 @@ function materialDocumentNavigation(bookChannel){
   if(/^https?:\/\//i.test(href)){target.setAttribute('target','_blank');target.setAttribute('rel','noopener noreferrer');}else event.preventDefault();
  },true);
 }
+function installPageRestrictions(){
+document.addEventListener('contextmenu', function(event) {
+  event.preventDefault();
+}, true);
+// Best-effort shortcut restrictions. Browser menus and external requests remain outside page control.
+document.addEventListener('keydown', function(event) {
+  const key = String(event.key || '').toLowerCase();
+  const modifier = event.ctrlKey || event.metaKey;
+  const blocked = key === 'f12' || key === 'contextmenu' ||
+    (event.shiftKey && key === 'f10') ||
+    (modifier && (key === 'u' || key === 's')) ||
+    (modifier && event.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) ||
+    (event.metaKey && event.altKey && ['i', 'j', 'c', 'u'].includes(key));
+  if (blocked) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
+}
 function prepareMaterialDocument(html,stateChannel,bookChannel){
  const doc=new DOMParser().parseFromString(html,'text/html');doc.querySelectorAll('base').forEach(el=>el.remove());
- const script=doc.createElement('script');script.textContent='('+materialDocumentNavigation.toString()+')('+JSON.stringify(bookChannel||'')+');'+(stateChannel?'('+workbookPersistence.toString()+')('+JSON.stringify(stateChannel)+');':'');doc.head.insertBefore(script,doc.head.firstChild);
+ const script=doc.createElement('script');script.textContent='('+installPageRestrictions.toString()+')();('+materialDocumentNavigation.toString()+')('+JSON.stringify(bookChannel||'')+');'+(stateChannel?'('+workbookPersistence.toString()+')('+JSON.stringify(stateChannel)+');':'');doc.head.insertBefore(script,doc.head.firstChild);
  return '<!doctype html>'+doc.documentElement.outerHTML;
 }
 function workbookPersistence(channel){
@@ -358,22 +377,6 @@ function signOut(){const oldToken=token;clearSessionToken();token='';data=null;s
 if(token)run(async()=>{try{await refresh();}catch(e){showLogin();throw e;}});else showLogin();
 </script><script>
 // Disable the page context menu; this does not conceal browser-delivered source.
-document.addEventListener('contextmenu', function(event) {
-  event.preventDefault();
-}, true);
-// Best-effort shortcut restrictions. Browser menus and external requests remain outside page control.
-document.addEventListener('keydown', function(event) {
-  const key = String(event.key || '').toLowerCase();
-  const modifier = event.ctrlKey || event.metaKey;
-  const blocked = key === 'f12' || key === 'contextmenu' ||
-    (event.shiftKey && key === 'f10') ||
-    (modifier && (key === 'u' || key === 's')) ||
-    (modifier && event.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) ||
-    (event.metaKey && event.altKey && ['i', 'j', 'c', 'u'].includes(key));
-  if (blocked) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-}, true);
+installPageRestrictions();
 </script>
 </body></html>

@@ -80,7 +80,16 @@ async function api(method,...args){
   try{bridgeWindow.postMessage({type:'UBT_RPC',channel:bridgeChannel,id,method,args},bridgeOrigin);}catch(e){clearTimeout(timer);pendingCalls.delete(id);reject(e);}
  });
 }
-async function run(fn){status('Орындалуда…');const buttons=Array.from(document.querySelectorAll('button'),b=>[b,b.disabled]);buttons.forEach(([b])=>b.disabled=true);try{await fn();status('');}catch(e){if(/Кіру уақыты аяқталды|Қайта кіріңіз/.test(e.message)){clearSessionToken();token='';data=null;showLogin();}status(e.message,true);}finally{buttons.forEach(([b,disabled])=>{if(b.isConnected)b.disabled=disabled;});}}
+const buttonRunLocks=new WeakMap();
+async function run(fn,options={}){
+ status('Орындалуда…');
+ const buttons=options.lockButtons===false?[]:Array.from(document.querySelectorAll('button'));
+ buttons.forEach(button=>{let lock=buttonRunLocks.get(button);if(!lock){lock={count:0,disabled:button.disabled};buttonRunLocks.set(button,lock);}lock.count++;button.disabled=true;});
+ try{await fn();status('');}
+ catch(e){if(/Кіру уақыты аяқталды|Қайта кіріңіз/.test(e.message)){clearSessionToken();token='';data=null;showLogin();}status(e.message,true);}
+ finally{buttons.forEach(button=>{const lock=buttonRunLocks.get(button);if(!lock)return;if(--lock.count===0){button.disabled=lock.disabled;buttonRunLocks.delete(button);}});}
+}
+
 function readSessionToken(){
  try{const current=sessionStorage.getItem('ubt-token');if(current)return current;}catch(e){}
  try{const raw=localStorage.getItem('ubt-remembered-session');if(!raw)return '';let saved=JSON.parse(raw);if(typeof saved.token==='string'&&saved.token&&Number.isFinite(saved.expires)&&saved.expires>Date.now())return saved.token;localStorage.removeItem('ubt-remembered-session');}catch(e){try{localStorage.removeItem('ubt-remembered-session');}catch(ignore){}}return '';
@@ -307,7 +316,7 @@ function completionPage(){
  document.getElementById('view').innerHTML=`<section class="card"><h2>Тақырып бойынша орындалуы</h2><div class="two"><label>Топ<select id="completionGroup" onchange="completionGroup=this.value;completionLesson='';completionPage()">${groups.map((g,i)=>`<option value="${esc(g)}" ${g===completionGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label>Тапсырма түрі<select onchange="completionKind=this.value;completionLesson='';completionPage()">${['lesson','weekly','monthly'].map(k=>`<option value="${k}" ${k===completionKind?'selected':''}>${completionKindLabel(k)}</option>`).join('')}</select></label></div><label>Тақырып / тест<select onchange="completionLesson=this.value;completionPage()">${lessons.map(l=>`<option value="${esc(l.id)}" ${l.id===completionLesson?'selected':''}>${esc(lessonLabel(l))}${l.published?'':' (Жоба)'}</option>`).join('')}</select></label><button class="secondary" onclick="completionPage()">Тізімді жаңарту</button></section><div id="completionContent">${lessons.length?'Жүктелуде…':'Бұл топта таңдалған түрдегі тапсырма жоқ.'}</div>`;
  if(!completionLesson)return;
  const id=completionLesson,group=completionGroup,kind=completionKind,request=++completionRequest;
- run(async()=>{const report=await api('completionReport',token,id);if(page!=='completion'||request!==completionRequest||id!==completionLesson||group!==completionGroup||kind!==completionKind||data?.user.role!=='teacher')return;completionData=report;renderCompletion();});
+ run(async()=>{const report=await api('completionReport',token,id);if(page!=='completion'||request!==completionRequest||id!==completionLesson||group!==completionGroup||kind!==completionKind||data?.user.role!=='teacher')return;completionData=report;renderCompletion();},{lockButtons:false});
 }
 function renderCompletion(){
  const r=completionData;if(!r)return;

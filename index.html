@@ -324,8 +324,6 @@ function completionText(r,which){
  lines.push('',done?'*Тапсырған оқушылар:*':'*Тапсырмаған оқушылар:*');
  rows.forEach((s,i)=>lines.push((i+1)+'. '+clean(s.name)+(done?' — '+s.score+'/'+s.max+' балл ('+s.percent+'%) · '+new Date(s.at).toLocaleString('kk-KZ'):'')));
  if(!rows.length)lines.push(r.total?(done?'Әзірге тапсырған оқушы жоқ.':'Барлық оқушы тапсырды.'):'Есепке кіретін оқушы жоқ.');
- lines.push('','Барлығы: '+rows.length+' оқушы.');
- if(r.rosterMode==='current')lines.push('Тізім топтың қазіргі құрамы бойынша жасалды.');
  return lines.join('\n');
 }
 async function copyCompletion(which){

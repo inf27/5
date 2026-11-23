@@ -229,6 +229,11 @@ function lessonReadings(id){
   document.getElementById('view').innerHTML=`<section class="card"><button class="secondary" onclick="render()">← Сабақтарға</button><h2>Оқулықтан оқу</h2><p><b>${esc(result.lesson.title)}</b></p><p>Осы сабақтың материалында көрсетілген оқулық бөлімдері. Беттер оқулықтағы басылған нөмірлермен берілген.</p></section>${result.references.length?result.references.map((r,i)=>`<article class="card"><span class="tag">${r.grade}-сынып · ${esc(r.publisher)}${r.year?' · '+esc(r.year):''}</span><h3>${esc(r.section)}</h3><p><b>${esc(r.pages)}-беттер</b></p><button onclick="openLessonReading(${i})">Бетті ашу</button></article>`).join(''):'<section class="card"><p>Бұл сабаққа оқулық бөлімдері мен беттері әлі көрсетілмеген. Мұғалім сабақ материалына дереккөздерді қосқаннан кейін осы жерде көрінеді.</p></section>'}`;
  });
 }
+// Only in-flight requests are coordinated. No PDF chunks are retained for later reuse.
+const readingPdfWaiters=[];let readingPdfNetworkActive=0;
+async function readingPdfNetwork(fn){if(readingPdfNetworkActive>=3)await new Promise(resolve=>readingPdfWaiters.push(resolve));else readingPdfNetworkActive++;try{return await fn();}finally{const next=readingPdfWaiters.shift();if(next)next();else readingPdfNetworkActive--;}}
+function readingPdfDecode(value){return Uint8Array.from(atob(value),c=>c.charCodeAt(0));}
+async function readingPdfChunk(s,begin,end){return readingPdfNetwork(async()=>{if(!readingPdfActive(s)||s.failed)return null;const part=await api('getReadingPdfRange',s.token,s.lessonId,s.ref.fileId,begin,end),bytes=readingPdfDecode(part.data);if(part.begin!==begin||bytes.length!==end-begin)throw Error('PDF үзіндісі толық емес.');return bytes;});}
 let readingPdfSession=null,readingPdfLibrary=null;
 function readingPdfActive(s){return !s.closed&&readingPdfSession===s&&s.token===token&&s.epoch===studentPreviewEpoch&&!!document.getElementById('lessonPdfCanvas')?.isConnected;}
 function closeReadingPdf(){const s=readingPdfSession;readingPdfSession=null;if(!s)return;s.closed=true;if(s.renderTask)try{s.renderTask.cancel();}catch(ignore){}if(s.task)s.task.destroy().catch(()=>{});}
@@ -239,10 +244,11 @@ async function openLessonReading(index){
  closeReadingPdf();const s={token,epoch:studentPreviewEpoch,lessonId:lessonReadingsData.lesson.id,ref:r,printed:r.start,closed:false,queue:Promise.resolve(),draw:0};readingPdfSession=s;
  document.getElementById('view').innerHTML=`<section class="card"><button class="secondary" onclick="closeReadingPdf();lessonReadings('${esc(s.lessonId)}')">← Тақырыптың оқулықтарына</button><h2>${r.grade}-сынып · ${esc(r.publisher)}</h2><h3>${esc(r.section)}</h3><p>Тақырыптың беттері: <b>${esc(r.pages)}</b></p><div class="actions"><button type="button" class="secondary" onclick="stepReadingPdf(-1)">← Алдыңғы бет</button><label>Оқулықтағы бет<input type="number" id="lessonPdfPage" min="1" value="${r.start}" style="width:100px" onkeydown="if(event.key==='Enter')jumpReadingPdf()"></label><button type="button" onclick="jumpReadingPdf()">Бетті ашу</button><button type="button" class="secondary" onclick="stepReadingPdf(1)">Келесі бет →</button></div><p id="lessonPdfStatus" role="status">${r.start}-бет жүктелуде…</p><div style="overflow:auto;background:#e8edf5;padding:8px"><canvas id="lessonPdfCanvas" aria-label="Оқулық беті" style="display:block;width:100%;height:auto;background:white"></canvas></div></section>`;
  try{
-  const [pdf,info]=await Promise.all([loadReadingPdfLibrary(),api('getReadingPdfInfo',s.token,s.lessonId,r.fileId)]);if(!readingPdfActive(s))return;
+  const [pdf,info]=await Promise.all([loadReadingPdfLibrary(),api('getReadingPdfInfo',s.token,s.lessonId,r.fileId,'')]);if(!readingPdfActive(s))return;
+  const initial=readingPdfDecode(info.initialData);if(initial.length!==info.firstEnd)throw Error('PDF бастапқы бөлігі толық емес.');
   class ReadingRange extends pdf.PDFDataRangeTransport{
-   constructor(){super(info.size,new Uint8Array(),true);}
-   requestDataRange(begin,end){s.queue=s.queue.then(async()=>{for(let pos=begin;pos<end;pos+=1048576){if(!readingPdfActive(s)||s.failed)return;const stop=Math.min(pos+1048576,end),part=await api('getReadingPdfRange',s.token,s.lessonId,r.fileId,pos,stop);if(!readingPdfActive(s)||s.failed)return;const decoded=atob(part.data),bytes=Uint8Array.from(decoded,c=>c.charCodeAt(0));if(part.begin!==pos||bytes.length!==stop-pos)throw Error('PDF үзіндісі толық емес.');this.onDataRange(pos,bytes);}}).catch(e=>readingPdfError(s,e));}
+   constructor(){super(info.size,initial,true);}
+   requestDataRange(begin,end){(async()=>{for(let pos=begin;pos<end;pos+=1048576){if(!readingPdfActive(s)||s.failed)return;const stop=Math.min(pos+1048576,end),bytes=await readingPdfChunk(s,pos,stop);if(!bytes||!readingPdfActive(s)||s.failed)return;this.onDataRange(pos,bytes);}})().catch(e=>readingPdfError(s,e));}
    abort(){s.closed=true;}
   }
   s.transport=new ReadingRange();s.task=pdf.getDocument({range:s.transport,rangeChunkSize:1048576,disableAutoFetch:true,disableStream:true,isEvalSupported:false});s.doc=await s.task.promise;if(!readingPdfActive(s))return;await drawReadingPdf(s,r.start);
